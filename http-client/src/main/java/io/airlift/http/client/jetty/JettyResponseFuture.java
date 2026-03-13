@@ -13,6 +13,7 @@ import io.opentelemetry.semconv.NetworkAttributes;
 import io.opentelemetry.semconv.incubating.HttpIncubatingAttributes;
 import org.eclipse.jetty.client.Response;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -92,6 +93,7 @@ class JettyResponseFuture<T, E extends Exception>
     void completed(Response response, InputStream content)
     {
         if (state.get() == JettyAsyncHttpState.CANCELED) {
+            closeQuietly(content);
             return;
         }
 
@@ -135,6 +137,7 @@ class JettyResponseFuture<T, E extends Exception>
             value = responseHandler.handle(request, jettyResponse);
         }
         finally {
+            closeQuietly(content);
             if (jettyResponse != null) {
                 span.setAttribute(HttpIncubatingAttributes.HTTP_RESPONSE_BODY_SIZE, jettyResponse.getBytesRead());
             }
@@ -189,6 +192,15 @@ class JettyResponseFuture<T, E extends Exception>
 
         span.setStatus(StatusCode.ERROR, throwable.getMessage());
         span.recordException(throwable, Attributes.of(EXCEPTION_ESCAPED, true));
+    }
+
+    private static void closeQuietly(InputStream stream)
+    {
+        try {
+            stream.close();
+        }
+        catch (IOException ignored) {
+        }
     }
 
     @Override
